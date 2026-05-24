@@ -270,7 +270,7 @@ def run(duration_sec: int, db_path: Path, data_dir: Path) -> None:
 
         # ── Commit if due ────────────────────────────────────────────────────
         if time.monotonic() >= next_commit:
-            commit_push(data_dir, f"harvest: {iso(utcnow())} ({obs_window} new obs)")
+            commit_push(data_dir, f"harvest: {iso(utcnow())} ({obs_window} new obs)", db_path)
             obs_window  = 0
             next_commit = time.monotonic() + COMMIT_INTERVAL_SEC
 
@@ -278,7 +278,7 @@ def run(duration_sec: int, db_path: Path, data_dir: Path) -> None:
         time.sleep(max(0.0, POLL_INTERVAL_SEC - (time.monotonic() - poll_start)))
 
     # ── Shutdown: final commit ────────────────────────────────────────────────
-    commit_push(data_dir, obs_window, iso(utcnow()))
+    commit_push(data_dir, f"harvest: final {iso(utcnow())} ({obs_window} new obs)", db_path)
     conn.close()
     log.info("Harvester exited cleanly.")
 

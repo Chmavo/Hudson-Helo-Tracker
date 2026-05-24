@@ -129,8 +129,23 @@ def git(data_dir: Path, *args: str) -> subprocess.CompletedProcess:
     )
 
 
-def commit_push(data_dir: Path, message: str) -> None:
-    """Stage flights.db, commit with message, push to origin/data."""
+def commit_push(data_dir: Path, message: str,
+                db_path: Path | None = None) -> None:
+    """Stage flights.db, commit with message, push to origin/data.
+
+    db_path: if supplied, a WAL checkpoint is run first so all in-memory WAL
+    pages are flushed back to the main database file before git stages it.
+    Without this, SQLite WAL mode keeps recent writes in flights.db-wal and
+    git add flights.db sees no diff.
+    """
+    if db_path is not None:
+        try:
+            tmp = sqlite3.connect(str(db_path))
+            tmp.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            tmp.close()
+        except Exception as exc:
+            log.warning("WAL checkpoint failed: %s", exc)
+
     git(data_dir, "add", "flights.db")
 
     if git(data_dir, "diff", "--cached", "--quiet").returncode == 0:

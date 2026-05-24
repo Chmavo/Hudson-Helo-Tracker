@@ -433,7 +433,7 @@ def main():
              n_proc, n_skip)
 
     ts = iso(now_utc)
-    commit_push(args.data_dir, f"reconstruct: {ts} ({n_proc} flights)")
+    commit_push(args.data_dir, f"reconstruct: {ts} ({n_proc} flights)", args.db_path)
 
 
 if __name__ == "__main__":

@@ -374,7 +374,7 @@ def main():
     log.info("aircraft table: %d rows total", total)
 
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    commit_push(args.data_dir, f"enrich: {ts} ({len(aircraft)} aircraft)")
+    commit_push(args.data_dir, f"enrich: {ts} ({len(aircraft)} aircraft)", args.db_path)
 
 
 if __name__ == "__main__":
