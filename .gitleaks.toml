@@ -1,0 +1,15 @@
+title = "Hoboken Helo Accountability Tracker"
+
+[extend]
+# Use the gitleaks default ruleset as a base. It covers AWS keys, GitHub
+# tokens, generic API keys, private keys, and ~100 other common patterns.
+useDefault = true
+
+# Custom rules will be added in Stage 5 when filer PII secrets enter the
+# pipeline. At that point we'll add rules for phone numbers, Hoboken ZIP
+# patterns, and personal email addresses — plus explicit allowlist entries
+# for any false-positive locations (with comments explaining each exception).
+#
+# No allowlist entries are permitted without a comment explaining why the
+# detected pattern is a legitimate non-secret. If gitleaks fires on
+# existing content that is not a secret, investigate before allowlisting.

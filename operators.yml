@@ -1,0 +1,23 @@
+# Known tourist/charter helicopter operators in the Hudson River corridor.
+#
+# Matched case-insensitively as a substring against the FAA owner_name field.
+# Parsed by Stage 2 (enrich.py) with a simple line reader — no PyYAML needed.
+# Format: lines beginning with "  - " hold one match term each.
+#
+# Attribution: operator_flag is set to the matched term, which then appears
+# in the flights table and dashboard. Before any complaint names an operator,
+# two conditions must both be true (see THREAT_MODEL.md for details).
+#
+# Update this list when new operators are confirmed via FAA registry lookup.
+
+operators:
+  - FlyNYON
+  - NYONair
+  - HeliNY
+  - Liberty Helicopters
+  - Helo Holdings
+  - Blade Urban Air Mobility
+  - Blade Air Mobility
+  - Zip Aviation
+  - Charm Aviation
+  - Manhattan Helicopters
