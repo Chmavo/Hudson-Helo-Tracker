@@ -1,0 +1,56 @@
+name: Enrich Aircraft Data (FAA Registry)
+
+on:
+  schedule:
+    - cron: '0 4 * * *'   # daily at 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write   # push to data branch + create/read GitHub Releases
+  actions: read
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout main (code)
+        # Verify SHA: actions/checkout v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          path: code
+
+      - name: Checkout data branch
+        # Verify SHA: actions/checkout v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: data
+          path: data-branch
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity in data branch
+        working-directory: data-branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Set up Python 3.11
+        # Verify SHA: actions/setup-python v5.6.0
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests==2.31.0
+
+      - name: Run enrichment
+        working-directory: code
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: >-
+          python enrich.py
+          --db-path ../data-branch/flights.db
+          --data-dir ../data-branch
