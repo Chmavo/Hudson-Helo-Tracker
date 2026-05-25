@@ -34,8 +34,8 @@ USER_AGENT = f"hoboken-helo-accountability/{VERSION} (+{REPO_URL})"
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-PRIMARY_URL  = "https://opendata.adsb.fi/api/v3/lat/40.7440/lon/-74.0324/dist/8"
-FALLBACK_URL = "https://api.adsb.lol/v2/point/40.7440/-74.0324/8"
+PRIMARY_URL  = "https://opendata.adsb.fi/api/v3/lat/40.7440/lon/-74.0324/dist/4"
+FALLBACK_URL = "https://api.adsb.lol/v2/point/40.7440/-74.0324/4"
 
 # ── Timing ────────────────────────────────────────────────────────────────────
 
@@ -53,8 +53,8 @@ _ET = zoneinfo.ZoneInfo("America/New_York")
 
 # ── Validation bounds ─────────────────────────────────────────────────────────
 
-LAT_MIN, LAT_MAX        =  40.5,   41.0
-LON_MIN, LON_MAX        = -74.3,  -73.8
+LAT_MIN, LAT_MAX        =  40.67,  40.82
+LON_MIN, LON_MAX        = -74.18, -73.90
 ALT_MIN_FT, ALT_MAX_FT  = -500,  15000
 SPD_MIN_KT, SPD_MAX_KT  =    0,    300
 API_SKEW_TOLERANCE_SEC  =  300   # reject batch if API clock drifts >5 min
