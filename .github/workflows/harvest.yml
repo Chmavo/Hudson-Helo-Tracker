@@ -1,11 +1,6 @@
 name: Harvest ADS-B Data
 
 on:
-  schedule:
-    # Every 5h 55min. The harvester runs for 5h 50min, so this creates a
-    # 5-minute scheduling buffer. The concurrency group queues any overlap
-    # rather than cancelling the running job.
-    - cron: '55 */5 * * *'
   workflow_dispatch:
 
 permissions:
