@@ -149,42 +149,56 @@ HTML = """\
       href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
       crossorigin="">
 <style>
+:root{--bg:#f4f5f7;--surface:#fff;--text:#1a1a1a;--muted:#666;--sh:#333;--hdr:#1a1a2e;--th:#f0f0f0;--th-hover:#e4e4e4;--td-border:#eee;--tr-hover:#fafbfc;--footer:#aaa;--shadow:0 1px 3px rgba(0,0,0,.08)}
+body.dark{--bg:#0d1117;--surface:#161b22;--text:#e6edf3;--muted:#8b949e;--sh:#cdd5e0;--hdr:#010409;--th:#21262d;--th-hover:#2d333b;--td-border:#30363d;--tr-hover:#1c2128;--footer:#6e7681;--shadow:0 1px 3px rgba(0,0,0,.4)}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,sans-serif;color:#1a1a1a;background:#f4f5f7}
-header{background:#1a1a2e;color:#fff;padding:1rem 2rem}
+body{font-family:system-ui,sans-serif;color:var(--text);background:var(--bg);transition:background .2s,color .2s}
+header{background:var(--hdr);color:#fff;padding:1rem 2rem;display:flex;justify-content:space-between;align-items:flex-start}
 header h1{font-size:1.4rem;font-weight:700}
+.hdr-left{flex:1}
 .updated{font-size:.78rem;opacity:.65;margin-top:.3rem}
+.theme-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:5px;padding:.3rem .7rem;font-size:.75rem;cursor:pointer;white-space:nowrap;margin-left:1rem;flex-shrink:0;align-self:center}
+.theme-btn:hover{background:rgba(255,255,255,.25)}
 .container{max-width:1200px;margin:0 auto;padding:1rem 2rem}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin:1.5rem 0}
-.card{background:#fff;border-radius:8px;padding:1.1rem;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.card{background:var(--surface);border-radius:8px;padding:1.1rem;text-align:center;box-shadow:var(--shadow);transition:background .2s}
 .card .val{font-size:2.2rem;font-weight:700;line-height:1}
-.card .lbl{font-size:.72rem;color:#666;margin-top:.35rem;line-height:1.3}
+.card .lbl{font-size:.72rem;color:var(--muted);margin-top:.35rem;line-height:1.3}
 .card.hl .val{color:#c1121f}
-.section{background:#fff;border-radius:8px;padding:1rem 1.25rem;margin:1rem 0;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-.sh{font-size:.9rem;font-weight:600;color:#333;margin-bottom:.6rem}
+.section{background:var(--surface);border-radius:8px;padding:1rem 1.25rem;margin:1rem 0;box-shadow:var(--shadow);transition:background .2s}
+.sh{font-size:.9rem;font-weight:600;color:var(--sh);margin-bottom:.6rem}
 #map{height:430px;border-radius:6px}
+body.dark .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(1.05)}
+body.dark .leaflet-container{background:#0d1117}
 .legend{display:flex;flex-wrap:wrap;gap:.75rem;font-size:.75rem;margin-bottom:.6rem}
 .legend span{display:flex;align-items:center;gap:.3rem}
 .legend i{display:inline-block;width:22px;height:3px;border-radius:2px}
 canvas{max-height:190px}
 table{width:100%;border-collapse:collapse;font-size:.83rem}
-th{background:#f0f0f0;padding:.55rem .7rem;text-align:left;font-weight:600;cursor:pointer;user-select:none;white-space:nowrap}
-th:hover{background:#e4e4e4}
-td{padding:.45rem .7rem;border-top:1px solid #eee;vertical-align:middle}
-tr:hover td{background:#fafbfc}
+th{background:var(--th);color:var(--text);padding:.55rem .7rem;text-align:left;font-weight:600;cursor:pointer;user-select:none;white-space:nowrap;transition:background .2s}
+th:hover{background:var(--th-hover)}
+td{padding:.45rem .7rem;border-top:1px solid var(--td-border);vertical-align:middle}
+tr:hover td{background:var(--tr-hover)}
 .b{display:inline-block;padding:.12rem .38rem;border-radius:4px;font-size:.7rem;font-weight:600}
 .by{background:#fee2e2;color:#991b1b}
 .bn{background:#f0fdf4;color:#166534}
 .bl{background:#fef3c7;color:#92400e}
-footer{text-align:center;padding:2rem 1rem;font-size:.72rem;color:#aaa;line-height:1.8}
-footer a{color:#aaa}
+body.dark .by{background:#3d1212;color:#fca5a5}
+body.dark .bn{background:#0d2818;color:#86efac}
+body.dark .bl{background:#2d2008;color:#fde68a}
+.no-flights{text-align:center;padding:2.5rem 1rem;color:var(--muted);font-size:.9rem}
+footer{text-align:center;padding:2rem 1rem;font-size:.72rem;color:var(--footer);line-height:1.8}
+footer a{color:var(--footer)}
 @media(max-width:600px){header h1{font-size:1.1rem}#map{height:300px}.container{padding:.75rem 1rem}}
 </style>
 </head>
 <body>
 <header>
-  <h1>Hoboken Helicopter Accountability Tracker</h1>
-  <div class="updated">Data updated: <span id="ts"></span></div>
+  <div class="hdr-left">
+    <h1>Hoboken Helicopter Accountability Tracker</h1>
+    <div class="updated">Data updated: <span id="ts"></span></div>
+  </div>
+  <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">Dark</button>
 </header>
 <div class="container">
   <div class="stats" id="stats"></div>
@@ -207,7 +221,7 @@ footer a{color:#aaa}
 
   <div class="section">
     <div class="sh">All flights — last <span id="tlbl"></span> days</div>
-    <div style="overflow-x:auto">
+    <div id="ft-wrap" style="overflow-x:auto">
     <table>
       <thead><tr>
         <th onclick="srt(0)">Date/Time ET ↕</th>
@@ -222,6 +236,7 @@ footer a{color:#aaa}
       <tbody id="tbody"></tbody>
     </table>
     </div>
+    <div id="ft-empty" class="no-flights" style="display:none"></div>
   </div>
 </div>
 <footer>
@@ -240,6 +255,20 @@ footer a{color:#aaa}
 <script>
 const HOBOKEN=[[40.7330,-74.0420],[40.7610,-74.0420],[40.7610,-74.0190],[40.7330,-74.0190]];
 const HELIPORTS={'65NJ':[40.7480,-74.1043],'JRB':[40.7012,-74.0090],'6N5':[40.7427,-73.9719],'JRA':[40.7541,-74.0080],'LDJ':[40.6173,-74.2447]};
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
+(function(){
+  var saved=localStorage.getItem('theme');
+  var prefersDark=matchMedia('(prefers-color-scheme:dark)').matches;
+  var dark=saved==='dark'||(saved===null&&prefersDark);
+  if(dark)document.body.classList.add('dark');
+  document.getElementById('theme-btn').textContent=dark?'Light':'Dark';
+})();
+function toggleTheme(){
+  var dark=document.body.classList.toggle('dark');
+  localStorage.setItem('theme',dark?'dark':'light');
+  document.getElementById('theme-btn').textContent=dark?'Light':'Dark';
+}
 
 function etTime(iso){
   if(!iso)return'';
@@ -267,9 +296,9 @@ function render(d){
   // Stats cards
   const s=d.stats,sl=d.stats_days+'d';
   document.getElementById('stats').innerHTML=[
-    {lbl:`Over Hoboken (${sl})`,          val:s.total_flights,       hl:s.total_flights>0},
-    {lbl:`From Kearny (${sl})`,           val:s.kearny_departures,   hl:s.kearny_departures>0},
-    {lbl:`Outside HHI hours (${sl})`,     val:s.outside_hhi_hours,   hl:s.outside_hhi_hours>0},
+    {lbl:`Over Hoboken (${sl})`,      val:s.total_flights,     hl:s.total_flights>0},
+    {lbl:`From Kearny (${sl})`,       val:s.kearny_departures, hl:s.kearny_departures>0},
+    {lbl:`Outside HHI hours (${sl})`, val:s.outside_hhi_hours, hl:s.outside_hhi_hours>0},
   ].map(i=>`<div class="card${i.hl?' hl':''}"><div class="val">${i.val??'—'}</div><div class="lbl">${i.lbl}</div></div>`).join('');
 
   // Map
@@ -284,7 +313,6 @@ function render(d){
   }
   for(const f of d.flights){
     if(!f.stats_window||!f.track||f.track.length<2)continue;
-    // track coords are [lon,lat] per GeoJSON; Leaflet wants [lat,lon]
     const ll=f.track.map(([lo,la])=>[la,lo]);
     let col='#bbb';
     if(f.crossed_hoboken&&f.is_kearny_departure)col='#c1121f';
@@ -303,21 +331,29 @@ function render(d){
   });
 
   // Table
-  document.getElementById('tbody').innerHTML=d.flights.length?d.flights.map(f=>{
-    const route=[f.departure_heliport,f.arrival_heliport].filter(Boolean).join('→')||'—';
-    const minAlt=f.crossed_hoboken&&f.min_alt_over_hoboken_ft!=null?Math.round(f.min_alt_over_hoboken_ft).toLocaleString():'—';
-    const owner=f.operator_flag||(f.owner_name?(f.owner_name.length>30?f.owner_name.slice(0,30)+'…':f.owner_name):'—');
-    return`<tr>
-      <td data-v="${f.started_at}">${etTime(f.started_at)}</td>
-      <td>${f.n_number||f.icao_hex}</td>
-      <td title="${f.owner_name}">${owner}</td>
-      <td>${route}</td>
-      <td data-v="${f.min_alt_over_hoboken_ft??99999}">${minAlt}</td>
-      <td>${bdg(f.crossed_hoboken,'Yes','No')}</td>
-      <td>${bdg(!f.outside_hhi_hours,'Yes','No')}</td>
-      <td>${f.confidence==='low'?'<span class="b bl">Low</span>':'High'}</td>
-    </tr>`;
-  }).join(''):'<tr><td colspan="8" style="text-align:center;padding:2rem;color:#999">No Hoboken overflights recorded in the last '+d.table_days+' days</td></tr>';
+  if(d.flights.length){
+    document.getElementById('ft-wrap').style.display='';
+    document.getElementById('ft-empty').style.display='none';
+    document.getElementById('tbody').innerHTML=d.flights.map(f=>{
+      const route=[f.departure_heliport,f.arrival_heliport].filter(Boolean).join('→')||'—';
+      const minAlt=f.crossed_hoboken&&f.min_alt_over_hoboken_ft!=null?Math.round(f.min_alt_over_hoboken_ft).toLocaleString():'—';
+      const owner=f.operator_flag||(f.owner_name?(f.owner_name.length>30?f.owner_name.slice(0,30)+'…':f.owner_name):'—');
+      return`<tr>
+        <td data-v="${f.started_at}">${etTime(f.started_at)}</td>
+        <td>${f.n_number||f.icao_hex}</td>
+        <td title="${f.owner_name}">${owner}</td>
+        <td>${route}</td>
+        <td data-v="${f.min_alt_over_hoboken_ft??99999}">${minAlt}</td>
+        <td>${bdg(f.crossed_hoboken,'Yes','No')}</td>
+        <td>${bdg(!f.outside_hhi_hours,'Yes','No')}</td>
+        <td>${f.confidence==='low'?'<span class="b bl">Low</span>':'High'}</td>
+      </tr>`;
+    }).join('');
+  }else{
+    document.getElementById('ft-wrap').style.display='none';
+    document.getElementById('ft-empty').style.display='block';
+    document.getElementById('ft-empty').textContent='No Hoboken overflights recorded in the last '+d.table_days+' days';
+  }
 }
 
 fetch('data/flights.json').then(r=>{if(!r.ok)throw new Error(r.status);return r.json();}).then(render)
