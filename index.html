@@ -128,9 +128,8 @@ function render(d){
   // Stats cards
   const s=d.stats,sl=d.stats_days+'d';
   document.getElementById('stats').innerHTML=[
-    {lbl:`Total flights (${sl})`,        val:s.total_flights,       hl:false},
-    {lbl:`Crossed Hoboken (${sl})`,       val:s.hoboken_crossings,   hl:s.hoboken_crossings>0},
-    {lbl:`Kearny departures (${sl})`,     val:s.kearny_departures,   hl:s.kearny_departures>0},
+    {lbl:`Over Hoboken (${sl})`,          val:s.total_flights,       hl:s.total_flights>0},
+    {lbl:`From Kearny (${sl})`,           val:s.kearny_departures,   hl:s.kearny_departures>0},
     {lbl:`Outside HHI hours (${sl})`,     val:s.outside_hhi_hours,   hl:s.outside_hhi_hours>0},
   ].map(i=>`<div class="card${i.hl?' hl':''}"><div class="val">${i.val??'—'}</div><div class="lbl">${i.lbl}</div></div>`).join('');
 
