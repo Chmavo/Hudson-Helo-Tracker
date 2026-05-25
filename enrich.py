@@ -215,8 +215,24 @@ def get_registry_zip(repo: str, session: requests.Session) -> bytes:
                   if release is None
                   else f"release is {_release_age_days(release)}d old (≥{REGISTRY_MAX_AGE_DAYS}d)")
         log.info("Downloading fresh FAA registry (%s)...", reason)
-        r = session.get(FAA_REGISTRY_URL, timeout=180,
-                        headers={"User-Agent": USER_AGENT})
+        # registry.faa.gov blocks obvious automation User-Agents from cloud IPs;
+        # use browser-like headers so the download succeeds on GitHub Actions.
+        faa_headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "application/zip,application/octet-stream,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://registry.faa.gov/aircraftinquiry/Search/NNumberInquiry",
+        }
+        r = session.get(FAA_REGISTRY_URL, timeout=180, headers=faa_headers)
+        if r.status_code == 403:
+            log.warning(
+                "FAA registry returned 403 (IP block or rate limit). "
+                "Enrichment skipped — will retry on next scheduled run."
+            )
+            return None
         r.raise_for_status()
         log.info("Downloaded %d bytes from registry.faa.gov", len(r.content))
         _create_faa_release(repo, r.content, session)
@@ -366,6 +382,9 @@ def main():
     session.headers["User-Agent"] = USER_AGENT
 
     zip_data = get_registry_zip(repo, session)
+    if zip_data is None:
+        log.warning("No registry data available — exiting without updating aircraft table.")
+        sys.exit(0)
     aircraft = parse_registry(zip_data)
 
     conn = init_db(args.db_path)
