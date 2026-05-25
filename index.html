@@ -152,8 +152,7 @@ function render(d){
     else if(f.crossed_hoboken)col='#f4a261';
     else if(f.is_kearny_departure)col='#457b9d';
     L.polyline(ll,{color:col,weight:f.confidence==='high'?2.5:1.5,opacity:f.confidence==='high'?.8:.35,dashArray:f.confidence==='low'?'5,5':null})
-     .bindTooltip([f.n_number||f.icao_hex,f.started_at.slice(0,16).replace('T',' ')+' UTC',f.departure_heliport&&f.arrival_heliport?f.departure_heliport+'→'+f.arrival_heliport:''].filter(Boolean).join('
-'))
+     .bindTooltip([f.n_number||f.icao_hex,f.started_at.slice(0,16).replace('T',' ')+' UTC',f.departure_heliport&&f.arrival_heliport?f.departure_heliport+'→'+f.arrival_heliport:''].filter(Boolean).join('\n'))
      .addTo(map);
   }
 
