@@ -250,10 +250,14 @@ def run(duration_sec: int, db_path: Path, data_dir: Path) -> None:
             payload = resp.json()
             aircraft = payload.get("ac", [])
 
-            # Drop the batch if the API's reported timestamp is severely skewed
+            # Drop the batch if the API's reported timestamp is severely skewed.
+            # adsb.fi returns 'now' in milliseconds; values >1e10 are ms, not s.
             api_now = payload.get("now")
             if api_now is not None:
-                skew = abs(time.time() - float(api_now))
+                api_ts = float(api_now)
+                if api_ts > 1e10:
+                    api_ts /= 1000.0
+                skew = abs(time.time() - api_ts)
                 if skew > API_SKEW_TOLERANCE_SEC:
                     log.warning("API clock skew=%.0fs from %s — dropping batch", skew, source)
                     aircraft = []
