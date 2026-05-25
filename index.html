@@ -165,7 +165,7 @@ function render(d){
   });
 
   // Table
-  document.getElementById('tbody').innerHTML=d.flights.map(f=>{
+  document.getElementById('tbody').innerHTML=d.flights.length?d.flights.map(f=>{
     const route=[f.departure_heliport,f.arrival_heliport].filter(Boolean).join('→')||'—';
     const minAlt=f.crossed_hoboken&&f.min_alt_over_hoboken_ft!=null?Math.round(f.min_alt_over_hoboken_ft).toLocaleString():'—';
     const owner=f.operator_flag||(f.owner_name?(f.owner_name.length>30?f.owner_name.slice(0,30)+'…':f.owner_name):'—');
@@ -179,7 +179,7 @@ function render(d){
       <td>${bdg(!f.outside_hhi_hours,'Yes','No')}</td>
       <td>${f.confidence==='low'?'<span class="b bl">Low</span>':'High'}</td>
     </tr>`;
-  }).join('');
+  }).join(''):'<tr><td colspan="8" style="text-align:center;padding:2rem;color:#999">No Hoboken overflights recorded in the last '+d.table_days+' days</td></tr>';
 }
 
 fetch('data/flights.json').then(r=>{if(!r.ok)throw new Error(r.status);return r.json();}).then(render)
