@@ -18,6 +18,7 @@ import signal
 import sqlite3
 import sys
 import time
+import zoneinfo
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -38,12 +39,17 @@ FALLBACK_URL = "https://api.adsb.lol/v2/point/40.7440/-74.0324/8"
 
 # ── Timing ────────────────────────────────────────────────────────────────────
 
-POLL_INTERVAL_SEC        = 10
-COMMIT_INTERVAL_SEC      = 300   # 5 minutes
-FALLBACK_DURATION_SEC    = 300   # stay on fallback before retrying primary
-FAILURES_BEFORE_FALLBACK = 3
-REQUEST_TIMEOUT_SEC      = 8
-MAX_BACKOFF_SEC          = 120
+POLL_INTERVAL_ACTIVE_SEC    = 10   # 6 AM – 11 PM ET
+POLL_INTERVAL_OVERNIGHT_SEC = 20   # 11 PM – 6 AM ET
+ACTIVE_HOUR_START_ET        = 6    # 6 AM ET — switch to active cadence
+ACTIVE_HOUR_END_ET          = 23   # 11 PM ET — switch to overnight cadence
+COMMIT_INTERVAL_SEC         = 300  # 5 minutes
+FALLBACK_DURATION_SEC       = 300  # stay on fallback before retrying primary
+FAILURES_BEFORE_FALLBACK    = 3
+REQUEST_TIMEOUT_SEC         = 8
+MAX_BACKOFF_SEC             = 120
+
+_ET = zoneinfo.ZoneInfo("America/New_York")
 
 # ── Validation bounds ─────────────────────────────────────────────────────────
 
@@ -67,7 +73,8 @@ log = logging.getLogger(__name__)
 
 # ── Signal ────────────────────────────────────────────────────────────────────
 
-_shutdown = False
+_shutdown              = False
+_last_logged_interval: int | None = None
 
 def _handle_sigterm(signum, frame):
     global _shutdown
@@ -87,6 +94,17 @@ def round5s(dt: datetime) -> str:
     ts = dt.timestamp()
     rounded = round(ts / 5) * 5
     return datetime.fromtimestamp(rounded, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+def current_poll_interval(now_utc: datetime) -> int:
+    """Return poll interval in seconds based on Eastern Time hour.
+
+    Active (10s): 6 AM – 10:59 PM ET  (ACTIVE_HOUR_START_ET <= hour < ACTIVE_HOUR_END_ET)
+    Overnight (20s): 11 PM – 5:59 AM ET
+    """
+    et_hour = now_utc.astimezone(_ET).hour
+    if ACTIVE_HOUR_START_ET <= et_hour < ACTIVE_HOUR_END_ET:
+        return POLL_INTERVAL_ACTIVE_SEC
+    return POLL_INTERVAL_OVERNIGHT_SEC
 
 # ── Validation ────────────────────────────────────────────────────────────────
 
@@ -177,7 +195,7 @@ VALUES (?, ?, ?, ?)
 # ── Main loop ─────────────────────────────────────────────────────────────────
 
 def run(duration_sec: int, db_path: Path, data_dir: Path) -> None:
-    global _shutdown
+    global _shutdown, _last_logged_interval
     signal.signal(signal.SIGTERM, _handle_sigterm)
 
     conn = init_db(db_path)
@@ -196,7 +214,16 @@ def run(duration_sec: int, db_path: Path, data_dir: Path) -> None:
     log.info("Harvester started — duration=%ds db=%s", duration_sec, db_path)
 
     while True:
-        poll_start = time.monotonic()
+        poll_start    = time.monotonic()
+        poll_interval = current_poll_interval(utcnow())
+        if poll_interval != _last_logged_interval:
+            now_u = utcnow()
+            label = "active" if poll_interval == POLL_INTERVAL_ACTIVE_SEC else "overnight"
+            log.info("Switched to %s cadence (%ds) at %s UTC / %s ET",
+                     label, poll_interval,
+                     now_u.strftime("%Y-%m-%d %H:%M:%S"),
+                     now_u.astimezone(_ET).strftime("%Y-%m-%d %H:%M:%S"))
+            _last_logged_interval = poll_interval
 
         # ── Exit conditions ──────────────────────────────────────────────────
         if _shutdown or (poll_start - loop_start) >= duration_sec:
@@ -242,7 +269,7 @@ def run(duration_sec: int, db_path: Path, data_dir: Path) -> None:
                 using_fallback    = True
                 fallback_until    = time.time() + FALLBACK_DURATION_SEC
                 consecutive_failures = 0
-            time.sleep(max(0.0, POLL_INTERVAL_SEC - (time.monotonic() - poll_start)))
+            time.sleep(max(0.0, poll_interval - (time.monotonic() - poll_start)))
             continue
 
         # ── Validate and insert ──────────────────────────────────────────────
@@ -274,8 +301,8 @@ def run(duration_sec: int, db_path: Path, data_dir: Path) -> None:
             obs_window  = 0
             next_commit = time.monotonic() + COMMIT_INTERVAL_SEC
 
-        # ── Sleep to maintain 10-sec cadence ─────────────────────────────────
-        time.sleep(max(0.0, POLL_INTERVAL_SEC - (time.monotonic() - poll_start)))
+        # ── Sleep to maintain cadence ─────────────────────────────────────────
+        time.sleep(max(0.0, poll_interval - (time.monotonic() - poll_start)))
 
     # ── Shutdown: final commit ────────────────────────────────────────────────
     commit_push(data_dir, f"harvest: final {iso(utcnow())} ({obs_window} new obs)", db_path)
@@ -297,4 +324,16 @@ def main():
     run(args.duration, args.db_path, args.data_dir)
 
 if __name__ == "__main__":
+    # ── Cadence unit tests ────────────────────────────────────────────────────
+    def _et(h: int, m: int = 0, s: int = 0) -> datetime:
+        return datetime(2026, 5, 26, h, m, s,
+                        tzinfo=zoneinfo.ZoneInfo("America/New_York")
+                        ).astimezone(timezone.utc)
+
+    assert current_poll_interval(_et(14))         == POLL_INTERVAL_ACTIVE_SEC,    "2 PM ET → 10s"
+    assert current_poll_interval(_et(2))           == POLL_INTERVAL_OVERNIGHT_SEC, "2 AM ET → 20s"
+    assert current_poll_interval(_et(23, 0, 0))   == POLL_INTERVAL_OVERNIGHT_SEC, "11 PM ET exactly → 20s"
+    assert current_poll_interval(_et(6, 0, 0))    == POLL_INTERVAL_ACTIVE_SEC,    "6 AM ET exactly → 10s"
+    print("Cadence tests passed.")
+
     main()
