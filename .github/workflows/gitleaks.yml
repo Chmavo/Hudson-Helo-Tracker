@@ -16,22 +16,23 @@ jobs:
 
     steps:
       - name: Checkout (full history for comprehensive scan)
-        # Verify SHA: actions/checkout v4.2.2
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        # Verify SHA: actions/checkout v5.0.1
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           fetch-depth: 0
 
       - name: Install gitleaks (with checksum verification)
         run: |
           VERSION="8.18.4"
+          TARBALL="gitleaks_${VERSION}_linux_x64.tar.gz"
           curl -sSfL \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
-            -o /tmp/gitleaks.tar.gz
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/${TARBALL}" \
+            -o "/tmp/${TARBALL}"
           curl -sSfL \
             "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_checksums.txt" \
             -o /tmp/gitleaks_checksums.txt
-          cd /tmp && grep "linux_x64.tar.gz" gitleaks_checksums.txt | sha256sum -c
-          sudo tar -xf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
+          cd /tmp && grep "${TARBALL}" gitleaks_checksums.txt | sha256sum -c
+          sudo tar -xf "/tmp/${TARBALL}" -C /usr/local/bin gitleaks
           gitleaks version
 
       - name: Scan for secrets
