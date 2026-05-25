@@ -44,12 +44,11 @@ def query_stats(conn: sqlite3.Connection, since: str) -> dict:
     row = conn.execute("""
         SELECT
             COUNT(*)                              AS total_flights,
-            COALESCE(SUM(crossed_hoboken), 0)     AS hoboken_crossings,
             COALESCE(SUM(is_kearny_departure), 0) AS kearny_departures,
             COALESCE(SUM(outside_hhi_hours), 0)   AS outside_hhi_hours,
             COALESCE(SUM(is_tour_operator), 0)    AS tour_operator_flights
         FROM flights
-        WHERE started_at >= ? AND confidence = 'high'
+        WHERE started_at >= ? AND confidence = 'high' AND crossed_hoboken = 1
     """, (since,)).fetchone()
     return dict(row)
 
@@ -58,7 +57,7 @@ def query_daily(conn: sqlite3.Connection, since: str) -> list:
     rows = conn.execute("""
         SELECT date(started_at) AS day, COUNT(*) AS count
         FROM flights
-        WHERE started_at >= ? AND confidence = 'high'
+        WHERE started_at >= ? AND confidence = 'high' AND crossed_hoboken = 1
         GROUP BY date(started_at)
         ORDER BY day
     """, (since,)).fetchall()
@@ -97,6 +96,7 @@ def query_flights(conn: sqlite3.Connection,
         FROM flights f
         LEFT JOIN aircraft a ON f.icao_hex = a.icao_hex
         WHERE f.started_at >= ?
+          AND f.crossed_hoboken = 1
         ORDER BY f.started_at DESC
     """, (since_table,)).fetchall()
 
@@ -269,9 +269,8 @@ function render(d){
   // Stats cards
   const s=d.stats,sl=d.stats_days+'d';
   document.getElementById('stats').innerHTML=[
-    {lbl:`Total flights (${sl})`,        val:s.total_flights,       hl:false},
-    {lbl:`Crossed Hoboken (${sl})`,       val:s.hoboken_crossings,   hl:s.hoboken_crossings>0},
-    {lbl:`Kearny departures (${sl})`,     val:s.kearny_departures,   hl:s.kearny_departures>0},
+    {lbl:`Over Hoboken (${sl})`,          val:s.total_flights,       hl:s.total_flights>0},
+    {lbl:`From Kearny (${sl})`,           val:s.kearny_departures,   hl:s.kearny_departures>0},
     {lbl:`Outside HHI hours (${sl})`,     val:s.outside_hhi_hours,   hl:s.outside_hhi_hours>0},
   ].map(i=>`<div class="card${i.hl?' hl':''}"><div class="val">${i.val??'—'}</div><div class="lbl">${i.lbl}</div></div>`).join('');
 
