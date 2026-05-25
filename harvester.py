@@ -59,12 +59,6 @@ ALT_MIN_FT, ALT_MAX_FT  = -500,  15000
 SPD_MIN_KT, SPD_MAX_KT  =    0,    300
 API_SKEW_TOLERANCE_SEC  =  300   # reject batch if API clock drifts >5 min
 
-# ADS-B category A7 = helicopter/gyroplane per ICAO Annex 10.
-# Operators in this corridor (tour operators, corporate, news) use modern
-# avionics that broadcast A7. Accepting unknown category would re-admit
-# the bulk of non-reporting fixed-wing traffic in the Newark/Teterboro area.
-ROTORCRAFT_CATEGORIES = {"A7"}
-
 ICAO_RE = re.compile(r'^[0-9A-F]{6}$')
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -122,10 +116,6 @@ def validate(ac: dict, source: str, observed_at: str) -> tuple:
     raw_hex = str(ac.get("hex", "")).strip().lstrip("~").upper()
     if not ICAO_RE.match(raw_hex):
         return None, f"bad icao_hex={raw_hex!r}"
-
-    category = ac.get("category") or None
-    if category not in ROTORCRAFT_CATEGORIES:
-        return None, f"category={category!r} not rotorcraft"
 
     try:
         lat = float(ac["lat"])
