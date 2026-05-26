@@ -2,7 +2,10 @@ name: Reconstruct Flights
 
 on:
   schedule:
-    - cron: '*/15 * * * *'   # every 15 minutes
+    - cron: '*/15 * * * *'   # every 15 minutes (GitHub best-effort; may lag on new repos)
+  workflow_run:
+    workflows: ["Harvest ADS-B Data"]
+    types: [completed]        # fires once per harvest session (~5x/day) as reliable fallback
   workflow_dispatch:
 
 permissions:
