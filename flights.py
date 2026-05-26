@@ -46,10 +46,16 @@ HELIPORTS = {
     "LDJ":  (40.6173, -74.2447),  # Linden Airport
 }
 
-# Hoboken bounding polygon (initial approximation — rectangle).
-# Refine based on actual observation data after Stage 1 runs for a few weeks.
-HOB_SW = (40.7330, -74.0420)   # SW corner (lat, lon)
-HOB_NE = (40.7610, -74.0190)   # NE corner (lat, lon)
+# Hoboken city boundary polygon (clockwise, lat/lon pairs).
+# Eastern edge follows the Hudson River waterfront, not a rectangle that
+# extends into the river. Coordinates approximate the actual city limits.
+HOBOKEN_POLYGON = [
+    (40.7330, -74.0415),  # SW  south border with Jersey City
+    (40.7615, -74.0380),  # NW  border with Weehawken/Union City
+    (40.7615, -74.0252),  # NE  north waterfront tip
+    (40.7490, -74.0258),  # E   mid waterfront (Sinatra Park area)
+    (40.7330, -74.0285),  # SE  south waterfront (Hoboken Terminal area)
+]
 
 # ── Timing / thresholds ───────────────────────────────────────────────────────
 
@@ -100,37 +106,53 @@ def haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def in_hoboken(lat: float, lon: float) -> bool:
-    return (HOB_SW[0] <= lat <= HOB_NE[0]) and (HOB_SW[1] <= lon <= HOB_NE[1])
+    """Ray-casting point-in-polygon test against HOBOKEN_POLYGON."""
+    # Fast bbox rejection before the polygon walk.
+    if not (40.7330 <= lat <= 40.7615 and -74.0415 <= lon <= -74.0252):
+        return False
+    inside = False
+    n = len(HOBOKEN_POLYGON)
+    j = n - 1
+    for i in range(n):
+        xi, yi = HOBOKEN_POLYGON[i]  # lat, lon of vertex i
+        xj, yj = HOBOKEN_POLYGON[j]  # lat, lon of vertex j
+        if (yi > lon) != (yj > lon):
+            cross_lat = xi + (lon - yi) / (yj - yi) * (xj - xi)
+            if lat < cross_lat:
+                inside = not inside
+        j = i
+    return inside
+
+
+def _seg_intersects(ax, ay, bx, by, cx, cy, dx, dy) -> bool:
+    """True if segment AB properly crosses segment CD (ignores collinear)."""
+    def _cross(ox, oy, px, py, qx, qy):
+        return (px - ox) * (qy - oy) - (py - oy) * (qx - ox)
+    d1 = _cross(cx, cy, dx, dy, ax, ay)
+    d2 = _cross(cx, cy, dx, dy, bx, by)
+    d3 = _cross(ax, ay, bx, by, cx, cy)
+    d4 = _cross(ax, ay, bx, by, dx, dy)
+    return ((d1 > 0) != (d2 > 0)) and ((d3 > 0) != (d4 > 0))
 
 
 def segment_crosses_hoboken(lat1: float, lon1: float,
                              lat2: float, lon2: float) -> bool:
     """
-    Liang-Barsky line-clipping test: True if the segment (lat1,lon1)→(lat2,lon2)
-    intersects the Hoboken bounding rectangle.
+    True if segment (lat1,lon1)→(lat2,lon2) intersects HOBOKEN_POLYGON.
 
-    Used to detect crossings when no observation falls inside the polygon —
-    possible when a helicopter transits a corner at high speed.
+    Catches crossings when no individual observation falls inside the polygon —
+    possible when an aircraft transits a corner between 10-second poll points.
     """
-    dx = lat2 - lat1
-    dy = lon2 - lon1
-    p = (-dx,        dx,        -dy,        dy)
-    q = (lat1 - HOB_SW[0], HOB_NE[0] - lat1,
-         lon1 - HOB_SW[1], HOB_NE[1] - lon1)
-    t0, t1 = 0.0, 1.0
-    for pi, qi in zip(p, q):
-        if pi == 0.0:
-            if qi < 0:
-                return False
-        elif pi < 0:
-            t0 = max(t0, qi / pi)
-            if t0 > t1:
-                return False
-        else:
-            t1 = min(t1, qi / pi)
-            if t0 > t1:
-                return False
-    return True
+    if in_hoboken(lat1, lon1) or in_hoboken(lat2, lon2):
+        return True
+    n = len(HOBOKEN_POLYGON)
+    for i in range(n):
+        j = (i + 1) % n
+        if _seg_intersects(lat1, lon1, lat2, lon2,
+                           HOBOKEN_POLYGON[i][0], HOBOKEN_POLYGON[i][1],
+                           HOBOKEN_POLYGON[j][0], HOBOKEN_POLYGON[j][1]):
+            return True
+    return False
 
 
 def nearest_heliport(lat: float, lon: float) -> str | None:
