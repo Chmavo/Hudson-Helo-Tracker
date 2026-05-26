@@ -13,10 +13,10 @@ Usage:
 import argparse
 import json
 import logging
-import os
 import re
 import signal
 import sqlite3
+import subprocess
 import sys
 import time
 import zoneinfo
@@ -63,31 +63,32 @@ API_SKEW_TOLERANCE_SEC  =  300   # reject batch if API clock drifts >5 min
 
 ICAO_RE = re.compile(r'^[0-9A-F]{6}$')
 
-# ── GitHub Actions helpers ────────────────────────────────────────────────────
+# ── In-process reconstruction ─────────────────────────────────────────────────
 
-_GITHUB_API = "https://api.github.com"
+def _run_reconstruct(db_path: Path, data_dir: Path) -> None:
+    """Run flights.py in a subprocess to reconstruct flight segments.
 
-def _trigger_reconstruct(session: requests.Session,
-                          token: str, repo: str) -> None:
-    """Dispatch the reconstruct workflow via GitHub Actions API."""
-    url = f"{_GITHUB_API}/repos/{repo}/actions/workflows/reconstruct.yml/dispatches"
+    Runs directly inside the harvest job — no GitHub API calls or extra
+    permissions required.  Sequential (called after each harvest commit) so
+    there are no git index-lock conflicts with the harvest commit path.
+    """
+    flights_py = Path(__file__).with_name("flights.py")
     try:
-        r = session.post(
-            url,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
-            json={"ref": "main"},
-            timeout=10,
+        r = subprocess.run(
+            [sys.executable, str(flights_py),
+             "--db-path", str(db_path),
+             "--data-dir", str(data_dir)],
+            capture_output=True, text=True, timeout=120,
         )
-        if r.status_code == 204:
-            log.info("Triggered reconstruct workflow")
+        if r.returncode == 0:
+            log.info("reconstruction ok")
         else:
-            log.warning("Reconstruct dispatch HTTP %d: %s", r.status_code, r.text[:200])
+            log.warning("reconstruction exited %d: %s",
+                        r.returncode, r.stderr[-300:].strip())
+    except subprocess.TimeoutExpired:
+        log.warning("reconstruction timed out after 120s")
     except Exception as exc:
-        log.warning("Reconstruct dispatch failed: %s", exc)
+        log.warning("reconstruction error: %s", exc)
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -230,9 +231,6 @@ def run(duration_sec: int, db_path: Path, data_dir: Path) -> None:
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
 
-    github_token = os.environ.get("GITHUB_TOKEN", "")
-    github_repo  = os.environ.get("GITHUB_REPOSITORY", "")
-
     loop_start        = time.monotonic()
     next_commit       = time.monotonic() + COMMIT_INTERVAL_SEC
     next_reconstruct  = time.monotonic() + RECONSTRUCT_INTERVAL_SEC
@@ -337,9 +335,9 @@ def run(duration_sec: int, db_path: Path, data_dir: Path) -> None:
             obs_window  = 0
             next_commit = time.monotonic() + COMMIT_INTERVAL_SEC
 
-        # ── Trigger reconstruct if due ────────────────────────────────────────
-        if github_token and github_repo and time.monotonic() >= next_reconstruct:
-            _trigger_reconstruct(session, github_token, github_repo)
+        # ── Reconstruct if due (runs after commit so git is idle) ────────────
+        if time.monotonic() >= next_reconstruct:
+            _run_reconstruct(db_path, data_dir)
             next_reconstruct = time.monotonic() + RECONSTRUCT_INTERVAL_SEC
 
         # ── Sleep to maintain cadence ─────────────────────────────────────────

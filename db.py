@@ -131,13 +131,16 @@ def git(data_dir: Path, *args: str) -> subprocess.CompletedProcess:
 
 
 def _merge_remote_aircraft(data_dir: Path, db_path: Path) -> None:
-    """Copy the aircraft table from origin/data:flights.db into db_path.
+    """Copy aircraft and flight records from origin/data:flights.db into db_path.
 
-    Harvest runs for ~6 hours and periodically force-pushes its local
-    flights.db, which doesn't contain aircraft rows written by the enrich
-    workflow mid-session.  Before each commit we fetch the remote, extract
-    the aircraft table (if it has rows), and INSERT OR REPLACE into the
-    local db so the enrich data is never lost.
+    Harvest runs for ~6 hours and force-pushes its local flights.db on each
+    commit.  Without this merge, any rows written by concurrent workflows
+    (enrich → aircraft table, reconstruct → flights table) are silently
+    overwritten.
+
+    Aircraft:  INSERT OR REPLACE — enrich data is authoritative.
+    Flights:   INSERT OR IGNORE  — keep the local (more recently reconstructed)
+               version when a flight_id already exists; add new ones from remote.
     """
     r = subprocess.run(
         ["git", "-C", str(data_dir), "show", "origin/data:flights.db"],
@@ -151,15 +154,22 @@ def _merge_remote_aircraft(data_dir: Path, db_path: Path) -> None:
         tmp.write_bytes(r.stdout)
         conn = sqlite3.connect(str(db_path))
         conn.execute(f"ATTACH DATABASE '{tmp}' AS remote")
-        count = conn.execute("SELECT COUNT(*) FROM remote.aircraft").fetchone()[0]
-        if count:
+
+        ac_count = conn.execute("SELECT COUNT(*) FROM remote.aircraft").fetchone()[0]
+        if ac_count:
             conn.execute("INSERT OR REPLACE INTO main.aircraft SELECT * FROM remote.aircraft")
-            conn.commit()
-            log.info("merged %d aircraft rows from remote", count)
+            log.info("merged %d aircraft rows from remote", ac_count)
+
+        fl_count = conn.execute("SELECT COUNT(*) FROM remote.flights").fetchone()[0]
+        if fl_count:
+            conn.execute("INSERT OR IGNORE INTO main.flights SELECT * FROM remote.flights")
+            log.info("merged %d flight rows from remote", fl_count)
+
+        conn.commit()
         conn.execute("DETACH DATABASE remote")
         conn.close()
     except Exception as exc:
-        log.warning("merge remote aircraft failed: %s", exc)
+        log.warning("merge remote data failed: %s", exc)
     finally:
         tmp.unlink(missing_ok=True)
 
