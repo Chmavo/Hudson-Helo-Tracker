@@ -258,9 +258,19 @@ def get_registry_zip(repo: str, session: requests.Session) -> bytes:
 # ── FAA registry parsing ──────────────────────────────────────────────────────
 
 def _strip_fieldnames(reader: csv.DictReader) -> None:
-    """Strip whitespace from DictReader field names (FAA files have trailing spaces)."""
+    """Normalize DictReader field names: collapse whitespace and remove leading BOM.
+
+    FAA CSVs opened with latin-1 encoding may have a UTF-8 BOM prepended to the
+    first field as the three latin-1 characters \\xef\\xbb\\xbf (ï»¿).  Internal
+    column names like 'MODE S CODE HEX' also need whitespace collapsed, not just
+    stripped at the edges.
+    """
     _ = reader.fieldnames          # trigger header row read
-    reader.fieldnames = [h.strip() for h in (reader.fieldnames or [])]
+    names = [' '.join(h.split()) for h in (reader.fieldnames or [])]
+    if names:
+        # UTF-8 BOM decoded as latin-1 is the three characters \xef \xbb \xbf
+        names[0] = names[0].lstrip('\xef\xbb\xbf')
+    reader.fieldnames = names
 
 
 def parse_registry(zip_data: bytes) -> dict:
@@ -285,6 +295,7 @@ def parse_registry(zip_data: bytes) -> dict:
             wrapper = io.TextIOWrapper(raw, encoding="latin-1")
             reader  = csv.DictReader(wrapper)
             _strip_fieldnames(reader)
+            log.info("ACFTREF.txt fieldnames: %s", reader.fieldnames[:8] if reader.fieldnames else [])
             for row in reader:
                 code = row.get("CODE", "").strip()
                 if code:
@@ -299,6 +310,7 @@ def parse_registry(zip_data: bytes) -> dict:
             wrapper = io.TextIOWrapper(raw, encoding="latin-1")
             reader  = csv.DictReader(wrapper)
             _strip_fieldnames(reader)
+            log.info("MASTER.txt fieldnames: %s", reader.fieldnames[:12] if reader.fieldnames else [])
 
             count = skipped = 0
             for row in reader:
