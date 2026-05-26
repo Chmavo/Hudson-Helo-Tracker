@@ -1,9 +1,11 @@
 name: Build Dashboard
 
 on:
-  workflow_run:
-    workflows: ["Reconstruct Flights"]
-    types: [completed]
+  schedule:
+    # Every 15 minutes — independent of the Reconstruct Flights workflow so
+    # the dashboard always gets a fresh build even when harvest is running and
+    # orphaning standalone reconstruct commits.
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -11,17 +13,12 @@ permissions:
 
 concurrency:
   group: dashboard
-  # Safe to cancel: the build is a pure read + overwrite of static files.
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # For workflow_run events, only proceed when reconstruction succeeded.
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
 
     steps:
       - name: Checkout main (code)
@@ -37,6 +34,31 @@ jobs:
         with:
           ref: data
           path: data-branch
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity in data branch
+        working-directory: data-branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Set up Python 3.11
+        # Verify SHA: actions/setup-python v6.2.0
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.11'
+
+      - name: Reconstruct flights
+        # Runs flights.py directly so the dashboard always uses fresh
+        # reconstruction, not whatever the data branch last committed.
+        # commit_push() inside flights.py will try to persist the results;
+        # if harvest is concurrently running it may fail gracefully — that is
+        # fine because we use the local DB (not the pushed copy) for the build.
+        working-directory: code
+        run: >-
+          python flights.py
+          --db-path ../data-branch/flights.db
+          --data-dir ../data-branch
 
       - name: Setup gh-pages workspace
         # Clones gh-pages if it already exists; initialises an orphan branch

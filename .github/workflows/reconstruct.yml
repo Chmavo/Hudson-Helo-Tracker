@@ -1,8 +1,10 @@
 name: Reconstruct Flights
 
 on:
-  schedule:
-    - cron: '*/15 * * * *'   # every 15 minutes
+  # Manual trigger only — reconstruction now runs inside the dashboard workflow
+  # on every build (every 15 min).  The scheduled cron was removed because
+  # harvest's --force-with-lease push always orphaned the resulting commits,
+  # making the workflow appear to succeed while its changes were silently lost.
   workflow_dispatch:
 
 permissions:
@@ -10,8 +12,6 @@ permissions:
 
 concurrency:
   group: reconstruct
-  # Safe to cancel a stale run: reconstruction is fully idempotent
-  # (deterministic flight_id → INSERT OR REPLACE).
   cancel-in-progress: true
 
 jobs:
