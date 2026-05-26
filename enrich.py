@@ -35,7 +35,7 @@ REPO_URL = "https://github.com/chmavo/hudson-helo-tracker"
 USER_AGENT = f"hoboken-helo-accountability/{VERSION} (+{REPO_URL})"
 
 FAA_REGISTRY_URL    = "https://registry.faa.gov/database/ReleasableAircraft.zip"
-REGISTRY_MAX_AGE_DAYS = 90
+REGISTRY_MAX_AGE_DAYS = 30
 GITHUB_API          = "https://api.github.com"
 
 # Suffix alphabet for N-number arithmetic (A-Z minus I and O = 24 chars)
@@ -155,8 +155,7 @@ def _release_age_days(release: dict) -> int:
 
 def _faa_release_tag() -> str:
     now = datetime.now(timezone.utc)
-    q   = (now.month - 1) // 3 + 1
-    return f"faa-registry-{now.year}Q{q}"
+    return f"faa-registry-{now.year}-{now.month:02d}"
 
 
 def _create_faa_release(repo: str, zip_data: bytes,
