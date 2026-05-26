@@ -198,6 +198,36 @@ def _icao_to_n_number(icao_hex: str) -> str | None:
         return None
     return f"N{num}{_ALPHA[first]}{_ALPHA[second]}"
 
+# ── Operator loading ──────────────────────────────────────────────────────────
+
+def _load_callsign_ops(path: Path) -> tuple[list, dict]:
+    """Parse operators.yml without PyYAML.
+
+    Returns (owner_name_terms, {UPPER_PREFIX: display_name}).
+    """
+    owner_names: list = []
+    callsign_prefixes: dict = {}
+    section = None
+    with open(path) as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith('#'):
+                continue
+            if line == 'owner_name:':
+                section = 'owner_name'
+            elif line == 'callsign_prefixes:':
+                section = 'callsign_prefixes'
+            elif section == 'owner_name' and line.startswith('- '):
+                owner_names.append(line[2:].strip())
+            elif section == 'callsign_prefixes' and ':' in line and not line.startswith('-'):
+                prefix, rest = line.split(':', 1)
+                prefix = prefix.strip()
+                name = rest.split('#')[0].strip()
+                if prefix and name:
+                    callsign_prefixes[prefix.upper()] = name
+    return owner_names, callsign_prefixes
+
+
 # ── Flight ID and track helpers ───────────────────────────────────────────────
 
 def make_flight_id(icao_hex: str, started_at: str) -> str:
@@ -245,7 +275,8 @@ def segment_observations(obs_list: list) -> list:
 
 # ── Flight computation ────────────────────────────────────────────────────────
 
-def compute_flight(obs: list, now_utc: datetime) -> dict | None:
+def compute_flight(obs: list, now_utc: datetime,
+                   callsign_ops: dict | None = None) -> dict | None:
     """
     Compute all fields for a single flight segment.
     Returns None only if obs is empty.
@@ -349,7 +380,25 @@ def compute_flight(obs: list, now_utc: datetime) -> dict | None:
         or next((o["registration"] for o in obs if o.get("registration")), None)
         or _icao_to_n_number(icao_hex)
     )
-    operator_flag = next((o["operator_flag"] for o in obs if o.get("operator_flag")), None)
+
+    # ── Operator: callsign prefix (highest priority) → aircraft table ─────────
+    # Callsign is broadcast by the actual flying entity, not the registered owner.
+    # An aircraft leased from e.g. Meridian and operated by FlyNYON broadcasts
+    # "NYON5" — matching the callsign prefix identifies the real operator.
+    operator_flag = None
+    if callsign_ops:
+        for o in obs:
+            cs = (o.get("callsign") or "").strip().upper()
+            if cs:
+                for prefix, op_name in callsign_ops.items():
+                    if cs.startswith(prefix):
+                        operator_flag = op_name
+                        log.debug("%s: callsign %s → operator %s", icao_hex, cs, op_name)
+                        break
+            if operator_flag:
+                break
+    if operator_flag is None:
+        operator_flag = next((o["operator_flag"] for o in obs if o.get("operator_flag")), None)
 
     return {
         "flight_id":               make_flight_id(icao_hex, started_at),
@@ -401,7 +450,7 @@ INSERT OR REPLACE INTO flights (
 _FETCH_OBS = """\
 SELECT
     o.icao_hex, o.lat, o.lon, o.alt_baro_ft,
-    o.ground_speed_kt, o.observed_at, o.registration,
+    o.ground_speed_kt, o.observed_at, o.registration, o.callsign,
     a.n_number, a.operator_flag
 FROM observations o
 LEFT JOIN aircraft a ON o.icao_hex = a.icao_hex
@@ -410,11 +459,12 @@ ORDER BY o.icao_hex, o.observed_at
 """
 
 _COLS = ("icao_hex", "lat", "lon", "alt_baro_ft",
-         "ground_speed_kt", "observed_at", "registration",
+         "ground_speed_kt", "observed_at", "registration", "callsign",
          "n_number", "operator_flag")
 
 
-def reconstruct_all(conn: sqlite3.Connection, now_utc: datetime) -> tuple:
+def reconstruct_all(conn: sqlite3.Connection, now_utc: datetime,
+                    callsign_ops: dict | None = None) -> tuple:
     """Reconstruct all complete flight segments in the lookback window."""
     cutoff   = now_utc - timedelta(hours=LOOKBACK_HOURS)
     rows     = conn.execute(_FETCH_OBS, (iso(cutoff),)).fetchall()
@@ -436,7 +486,7 @@ def reconstruct_all(conn: sqlite3.Connection, now_utc: datetime) -> tuple:
                 n_skipped += 1
                 continue   # flight might still be active — wait for next run
 
-            flight = compute_flight(seg, now_utc)
+            flight = compute_flight(seg, now_utc, callsign_ops)
             if flight:
                 conn.execute(_UPSERT_FLIGHT, flight)
                 flights_upserted.append(flight)
@@ -458,7 +508,14 @@ def main():
     now_utc = datetime.now(timezone.utc)
     conn    = init_db(args.db_path)
 
-    n_proc, n_skip = reconstruct_all(conn, now_utc)
+    # Load callsign-prefix → operator mappings from operators.yml if present.
+    callsign_ops: dict = {}
+    ops_path = Path(__file__).with_name("operators.yml")
+    if ops_path.exists():
+        _, callsign_ops = _load_callsign_ops(ops_path)
+        log.info("Loaded %d callsign prefix(es) from operators.yml", len(callsign_ops))
+
+    n_proc, n_skip = reconstruct_all(conn, now_utc, callsign_ops)
     conn.close()
 
     log.info("Reconstruction complete: %d flights upserted, %d segments still active",

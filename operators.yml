@@ -1,16 +1,23 @@
 # Known tourist/charter helicopter operators in the Hudson River corridor.
 #
-# Matched case-insensitively as a substring against the FAA owner_name field.
-# Parsed by Stage 2 (enrich.py) with a simple line reader — no PyYAML needed.
-# Format: lines beginning with "  - " hold one match term each.
+# owner_name
+#   Matched case-insensitively as a substring against the FAA registered owner
+#   name.  Set on the aircraft table row by enrich.py.  Works for operators that
+#   own (not lease) their aircraft.
 #
-# Attribution: operator_flag is set to the matched term, which then appears
-# in the flights table and dashboard. Before any complaint names an operator,
-# two conditions must both be true (see THREAT_MODEL.md for details).
+# callsign_prefixes
+#   Matched case-insensitively as a prefix against the ADS-B callsign broadcast
+#   during flight.  Takes priority over owner_name matching because it identifies
+#   the actual operating entity — operators who lease aircraft fly under their own
+#   ICAO telephony designator even when the airframe is registered to a leasing
+#   company (e.g., Meridian Helicopters leasing to FlyNYON).
 #
-# Update this list when new operators are confirmed via FAA registry lookup.
+#   To find new prefixes: query the callsign column of the observations table for
+#   flights that already cross Hoboken, look for recurring non-N-number patterns.
+#
+# Parsed by enrich.py and flights.py without PyYAML.
 
-operators:
+owner_name:
   - FlyNYON
   - NYONair
   - HeliNY
@@ -21,3 +28,16 @@ operators:
   - Zip Aviation
   - Charm Aviation
   - Manhattan Helicopters
+  - Meridian Air Charter
+
+# Callsign prefixes — verified against observed ADS-B data.
+# Format:  PREFIX: Display Name    # optional note
+callsign_prefixes:
+  NYON: FlyNYON          # NYONair ICAO telephony designator
+  # Add more as you spot them in the observations.callsign column:
+  # LBT: Liberty Helicopters
+  # ZIP: Zip Aviation
+  # BLA: Blade Air Mobility
+  # HNY: HeliNY
+  # NCH: NYC Helicopter
+  # MHT: Manhattan Helicopters

@@ -103,20 +103,39 @@ def is_us_icao(icao_hex: str) -> bool:
 
 # ── operators.yml ─────────────────────────────────────────────────────────────
 
-def load_operators(path: Path) -> list:
-    """Parse operators.yml without PyYAML. Returns list of match strings."""
-    ops = []
+def load_operators(path: Path) -> tuple[list, dict]:
+    """Parse operators.yml.
+
+    Returns (owner_name_terms, callsign_prefix_map).
+      owner_name_terms   — substrings matched against FAA owner_name
+      callsign_prefix_map — {UPPER_PREFIX: display_name} for ADS-B callsign matching
+    """
+    owner_names: list = []
+    callsign_prefixes: dict = {}
+    section = None
     with open(path) as f:
-        for line in f:
-            s = line.strip()
-            if s.startswith("- "):
-                ops.append(s[2:].strip())
-    return ops
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith('#'):
+                continue
+            if line == 'owner_name:':
+                section = 'owner_name'
+            elif line == 'callsign_prefixes:':
+                section = 'callsign_prefixes'
+            elif section == 'owner_name' and line.startswith('- '):
+                owner_names.append(line[2:].strip())
+            elif section == 'callsign_prefixes' and ':' in line and not line.startswith('-'):
+                prefix, rest = line.split(':', 1)
+                prefix = prefix.strip()
+                name = rest.split('#')[0].strip()
+                if prefix and name:
+                    callsign_prefixes[prefix.upper()] = name
+    return owner_names, callsign_prefixes
 
 
-def match_operator(owner_name: str, operators: list) -> str | None:
+def match_operator(owner_name: str, owner_names: list) -> str | None:
     lower = owner_name.lower()
-    for op in operators:
+    for op in owner_names:
         if op.lower() in lower:
             return op
     return None
@@ -386,8 +405,9 @@ def main():
         log.error("GITHUB_REPOSITORY env var is required")
         sys.exit(1)
 
-    operators = load_operators(Path("operators.yml"))
-    log.info("Loaded %d operator match terms from operators.yml", len(operators))
+    owner_names, callsign_prefixes = load_operators(Path("operators.yml"))
+    log.info("Loaded %d owner-name terms, %d callsign prefixes from operators.yml",
+             len(owner_names), len(callsign_prefixes))
 
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
@@ -399,7 +419,7 @@ def main():
     aircraft = parse_registry(zip_data)
 
     conn = init_db(args.db_path)
-    total = update_aircraft_table(conn, aircraft, operators)
+    total = update_aircraft_table(conn, aircraft, owner_names)
     conn.close()
     log.info("aircraft table: %d rows total", total)
 
