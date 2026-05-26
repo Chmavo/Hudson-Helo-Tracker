@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: write
-  actions: write    # allows harvester to dispatch the Reconstruct Flights workflow
 
 concurrency:
   group: harvest
@@ -56,9 +55,6 @@ jobs:
 
       - name: Run harvester
         working-directory: code
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
         run: >-
           python harvester.py
           --duration 21000
