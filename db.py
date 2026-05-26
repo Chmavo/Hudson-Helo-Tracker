@@ -8,6 +8,7 @@ so the schema stays in one place and git push logic isn't duplicated.
 import logging
 import sqlite3
 import subprocess
+import tempfile
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -129,14 +130,48 @@ def git(data_dir: Path, *args: str) -> subprocess.CompletedProcess:
     )
 
 
+def _merge_remote_aircraft(data_dir: Path, db_path: Path) -> None:
+    """Copy the aircraft table from origin/data:flights.db into db_path.
+
+    Harvest runs for ~6 hours and periodically force-pushes its local
+    flights.db, which doesn't contain aircraft rows written by the enrich
+    workflow mid-session.  Before each commit we fetch the remote, extract
+    the aircraft table (if it has rows), and INSERT OR REPLACE into the
+    local db so the enrich data is never lost.
+    """
+    r = subprocess.run(
+        ["git", "-C", str(data_dir), "show", "origin/data:flights.db"],
+        capture_output=True,   # stdout is raw bytes (no text=True)
+    )
+    if r.returncode != 0 or not r.stdout:
+        return
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        tmp = Path(f.name)
+    try:
+        tmp.write_bytes(r.stdout)
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(f"ATTACH DATABASE '{tmp}' AS remote")
+        count = conn.execute("SELECT COUNT(*) FROM remote.aircraft").fetchone()[0]
+        if count:
+            conn.execute("INSERT OR REPLACE INTO main.aircraft SELECT * FROM remote.aircraft")
+            conn.commit()
+            log.info("merged %d aircraft rows from remote", count)
+        conn.execute("DETACH DATABASE remote")
+        conn.close()
+    except Exception as exc:
+        log.warning("merge remote aircraft failed: %s", exc)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def commit_push(data_dir: Path, message: str,
                 db_path: Path | None = None) -> None:
     """Stage flights.db, commit with message, push to origin/data.
 
-    db_path: if supplied, a WAL checkpoint is run first so all in-memory WAL
-    pages are flushed back to the main database file before git stages it.
-    Without this, SQLite WAL mode keeps recent writes in flights.db-wal and
-    git add flights.db sees no diff.
+    db_path: if supplied, (1) WAL is checkpointed first so SQLite flushes all
+    in-memory pages back to the main file, and (2) the aircraft table is merged
+    from the current remote before staging so enrich data written by a parallel
+    workflow is never overwritten by harvest's periodic force-push.
     """
     if db_path is not None:
         try:
@@ -145,6 +180,12 @@ def commit_push(data_dir: Path, message: str,
             tmp.close()
         except Exception as exc:
             log.warning("WAL checkpoint failed: %s", exc)
+
+    # Fetch latest remote state, then merge any aircraft rows the enrich
+    # workflow may have committed while this session was running.
+    git(data_dir, "fetch", "origin", "data")
+    if db_path is not None:
+        _merge_remote_aircraft(data_dir, db_path)
 
     git(data_dir, "add", "flights.db")
 
