@@ -347,8 +347,8 @@ function render(d){
       pl.setStyle({weight:4,opacity:1});
       pl.bringToFront();
       if(!fromMap)map.fitBounds(pl.getBounds(),{padding:[50,50]});
+      for(const[id,p]of Object.entries(polylines)){if(id!==fid)p.setStyle({opacity:.12});}
     }
-    for(const[id,p]of Object.entries(polylines)){if(id!==fid)p.setStyle({opacity:.12});}
     const row=document.querySelector('#tbody tr[data-fid="'+fid+'"]');
     if(row){row.classList.add('sel');row.scrollIntoView({behavior:'smooth',block:'nearest'});}
   }

@@ -37,6 +37,7 @@ USER_AGENT = f"hoboken-helo-accountability/{VERSION} (+{REPO_URL})"
 FAA_REGISTRY_URL    = "https://registry.faa.gov/database/ReleasableAircraft.zip"
 REGISTRY_MAX_AGE_DAYS = 30
 GITHUB_API          = "https://api.github.com"
+OPENFLIGHTS_URL     = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airlines.dat"
 
 # Suffix alphabet for N-number arithmetic (A-Z minus I and O = 24 chars)
 _ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ"
@@ -274,6 +275,54 @@ def get_registry_zip(repo: str, session: requests.Session) -> bytes:
     log.info("Downloaded %d bytes from release asset", len(r.content))
     return r.content
 
+# ── OpenFlights operator database ────────────────────────────────────────────
+
+def download_openflights_operators(session: requests.Session) -> dict:
+    """Download OpenFlights airlines.dat → {ICAO_CODE_UPPER: name}.
+
+    airlines.dat columns (CSV, possibly quoted):
+      0:AirlineID  1:Name  2:Alias  3:IATA  4:ICAO  5:Callsign  6:Country  7:Active
+    ICAO code in column 4 is what aircraft transponders broadcast as the callsign prefix.
+    Rows with ICAO=\\N (null) or Active≠Y are skipped.
+    """
+    log.info("Downloading OpenFlights airlines database...")
+    r = session.get(OPENFLIGHTS_URL, timeout=30, headers={"User-Agent": USER_AGENT})
+    r.raise_for_status()
+    operators: dict = {}
+    reader = csv.reader(io.StringIO(r.text))
+    for row in reader:
+        if len(row) < 5:
+            continue
+        icao   = row[4].strip()
+        name   = row[1].strip()
+        active = row[7].strip() if len(row) > 7 else "Y"
+        if icao and icao != r"\N" and name and name != r"\N" and active == "Y":
+            operators[icao.upper()] = name
+    log.info("OpenFlights: %d active operators with ICAO codes", len(operators))
+    return operators
+
+
+_UPSERT_OPERATOR = "INSERT OR REPLACE INTO operators (icao_code, name, source) VALUES (?,?,?)"
+
+
+def update_operators_table(conn: sqlite3.Connection,
+                           openflights: dict,
+                           manual_overrides: dict) -> int:
+    """Populate operators table.
+
+    OpenFlights entries are inserted first; manual_overrides (from operators.yml)
+    replace any conflicting entry because they're inserted second with OR REPLACE.
+    """
+    with conn:
+        conn.executemany(_UPSERT_OPERATOR,
+                         [(k, v, "openflights") for k, v in openflights.items()])
+        conn.executemany(_UPSERT_OPERATOR,
+                         [(k, v, "manual") for k, v in manual_overrides.items()])
+    total = conn.execute("SELECT COUNT(*) FROM operators").fetchone()[0]
+    log.info("operators table: %d total (%d manual overrides)", total, len(manual_overrides))
+    return total
+
+
 # ── FAA registry parsing ──────────────────────────────────────────────────────
 
 def _strip_fieldnames(reader: csv.DictReader) -> None:
@@ -412,6 +461,14 @@ def main():
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
 
+    # Download OpenFlights operator database (ICAO codes → names).
+    # callsign_prefixes from operators.yml override these for display-name control.
+    try:
+        openflights_ops = download_openflights_operators(session)
+    except Exception as exc:
+        log.warning("OpenFlights download failed: %s — operators table will use manual entries only", exc)
+        openflights_ops = {}
+
     zip_data = get_registry_zip(repo, session)
     if zip_data is None:
         log.warning("No registry data available — exiting without updating aircraft table.")
@@ -419,6 +476,7 @@ def main():
     aircraft = parse_registry(zip_data)
 
     conn = init_db(args.db_path)
+    update_operators_table(conn, openflights_ops, callsign_prefixes)
     total = update_aircraft_table(conn, aircraft, owner_names)
     conn.close()
     log.info("aircraft table: %d rows total", total)

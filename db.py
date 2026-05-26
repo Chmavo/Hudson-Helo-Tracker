@@ -81,6 +81,12 @@ CREATE TABLE IF NOT EXISTS flights (
     reconstructed_at        TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS operators (
+    icao_code TEXT PRIMARY KEY,
+    name      TEXT NOT NULL,
+    source    TEXT NOT NULL DEFAULT 'openflights'
+);
+
 CREATE TABLE IF NOT EXISTS submissions (
     id                INTEGER PRIMARY KEY,
     flight_id         TEXT NOT NULL,
