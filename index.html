@@ -38,6 +38,9 @@ th{background:var(--th);color:var(--text);padding:.55rem .7rem;text-align:left;f
 th:hover{background:var(--th-hover)}
 td{padding:.45rem .7rem;border-top:1px solid var(--td-border);vertical-align:middle}
 tr:hover td{background:var(--tr-hover)}
+#tbody tr{cursor:pointer}
+tr.sel td{background:#dbeafe!important}
+body.dark tr.sel td{background:#1e3152!important}
 .b{display:inline-block;padding:.12rem .38rem;border-radius:4px;font-size:.7rem;font-weight:600}
 .by{background:#fee2e2;color:#991b1b}
 .bn{background:#f0fdf4;color:#166534}
@@ -112,7 +115,7 @@ footer a{color:var(--footer)}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
         crossorigin="anonymous"></script>
 <script>
-const HOBOKEN=[[40.7330,-74.0415],[40.7590,-74.0380],[40.7590,-74.0225],[40.7490,-74.0235],[40.7330,-74.0285]];
+const HOBOKEN=[[40.7340,-74.0407],[40.7590,-74.0380],[40.7590,-74.0225],[40.7490,-74.0235],[40.7355,-74.0275]];
 const HELIPORTS={'65NJ':[40.7480,-74.1043],'JRB':[40.7012,-74.0090],'6N5':[40.7427,-73.9719],'JRA':[40.7541,-74.0080],'LDJ':[40.6173,-74.2447]};
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
@@ -177,6 +180,7 @@ function render(d){
     L.circleMarker([lat,lon],{radius:6,color:'#222',fillColor:'#555',fillOpacity:.85})
      .bindTooltip(id).addTo(map);
   }
+  const polylines={},polyStyles={};
   for(const f of d.flights){
     if(!f.stats_window||!f.track||f.track.length<2)continue;
     const ll=f.track.map(([lo,la])=>[la,lo]);
@@ -184,10 +188,36 @@ function render(d){
     if(f.crossed_hoboken&&f.is_kearny_departure)col='#c1121f';
     else if(f.crossed_hoboken)col='#f4a261';
     else if(f.is_kearny_departure)col='#457b9d';
-    L.polyline(ll,{color:col,weight:f.confidence==='high'?2.5:1.5,opacity:f.confidence==='high'?.8:.35,dashArray:f.confidence==='low'?'5,5':null})
+    const w=f.confidence==='high'?2.5:1.5,op=f.confidence==='high'?.8:.35;
+    const pl=L.polyline(ll,{color:col,weight:w,opacity:op,dashArray:f.confidence==='low'?'5,5':null})
      .bindTooltip([f.n_number||f.icao_hex,f.started_at.slice(0,16).replace('T',' ')+' UTC',f.departure_heliport&&f.arrival_heliport?f.departure_heliport+'→'+f.arrival_heliport:''].filter(Boolean).join('\n'))
      .addTo(map);
+    polylines[f.flight_id]=pl;
+    polyStyles[f.flight_id]={color:col,weight:w,opacity:op};
+    (function(fid){pl.on('click',function(e){L.DomEvent.stopPropagation(e);selectFlight(fid,true);});})(f.flight_id);
   }
+  let selFid=null;
+  function selectFlight(fid,fromMap){
+    if(selFid===fid){clearSel();return;}
+    clearSel();
+    selFid=fid;
+    const pl=polylines[fid];
+    if(pl){
+      pl.setStyle({weight:4,opacity:1});
+      pl.bringToFront();
+      if(!fromMap)map.fitBounds(pl.getBounds(),{padding:[50,50]});
+    }
+    for(const[id,p]of Object.entries(polylines)){if(id!==fid)p.setStyle({opacity:.12});}
+    const row=document.querySelector('#tbody tr[data-fid="'+fid+'"]');
+    if(row){row.classList.add('sel');row.scrollIntoView({behavior:'smooth',block:'nearest'});}
+  }
+  function clearSel(){
+    if(!selFid)return;
+    for(const[id,p]of Object.entries(polylines)){const s=polyStyles[id];p.setStyle({color:s.color,weight:s.weight,opacity:s.opacity});}
+    document.querySelectorAll('#tbody tr.sel').forEach(r=>r.classList.remove('sel'));
+    selFid=null;
+  }
+  map.on('click',clearSel);
 
   // Chart
   new Chart(document.getElementById('chart'),{
@@ -204,7 +234,7 @@ function render(d){
       const route=[f.departure_heliport,f.arrival_heliport].filter(Boolean).join('→')||'—';
       const minAlt=f.crossed_hoboken&&f.min_alt_over_hoboken_ft!=null?Math.round(f.min_alt_over_hoboken_ft).toLocaleString():'—';
       const owner=f.operator_flag||(f.owner_name?(f.owner_name.length>30?f.owner_name.slice(0,30)+'…':f.owner_name):'—');
-      return`<tr>
+      return`<tr data-fid="${f.flight_id}">
         <td data-v="${f.started_at}">${etTime(f.started_at)}</td>
         <td>${f.n_number||f.icao_hex}</td>
         <td title="${f.owner_name}">${owner}</td>
@@ -215,6 +245,10 @@ function render(d){
         <td>${f.confidence==='low'?'<span class="b bl">Low</span>':'High'}</td>
       </tr>`;
     }).join('');
+    document.getElementById('tbody').addEventListener('click',function(e){
+      const row=e.target.closest('tr');
+      if(row&&row.dataset.fid)selectFlight(row.dataset.fid,false);
+    });
   }else{
     document.getElementById('ft-wrap').style.display='none';
     document.getElementById('ft-empty').style.display='block';
