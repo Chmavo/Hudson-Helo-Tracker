@@ -50,11 +50,11 @@ HELIPORTS = {
 # Eastern edge follows the Hudson River waterfront, not a rectangle that
 # extends into the river. Coordinates approximate the actual city limits.
 HOBOKEN_POLYGON = [
-    (40.7330, -74.0415),  # SW  south border with Jersey City
+    (40.7340, -74.0407),  # SW  Observer Hwy / 1st St west end
     (40.7590, -74.0380),  # NW  border with Weehawken (south of Weehawken)
     (40.7590, -74.0225),  # NE  north waterfront (Maxwell Place area)
     (40.7490, -74.0235),  # E   mid waterfront (Stevens Institute area)
-    (40.7330, -74.0285),  # SE  south waterfront (Hoboken Terminal area)
+    (40.7355, -74.0275),  # SE  south waterfront (Hoboken Terminal area)
 ]
 
 # ── Timing / thresholds ───────────────────────────────────────────────────────
@@ -109,7 +109,7 @@ def haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 def in_hoboken(lat: float, lon: float) -> bool:
     """Ray-casting point-in-polygon test against HOBOKEN_POLYGON."""
     # Fast bbox rejection before the polygon walk.
-    if not (40.7330 <= lat <= 40.7590 and -74.0415 <= lon <= -74.0225):
+    if not (40.7340 <= lat <= 40.7590 and -74.0407 <= lon <= -74.0225):
         return False
     inside = False
     n = len(HOBOKEN_POLYGON)
