@@ -13,6 +13,7 @@ Usage:
 import argparse
 import json
 import logging
+import os
 import re
 import signal
 import sqlite3
@@ -44,6 +45,7 @@ POLL_INTERVAL_OVERNIGHT_SEC = 20   # 11 PM – 6 AM ET
 ACTIVE_HOUR_START_ET        = 6    # 6 AM ET — switch to active cadence
 ACTIVE_HOUR_END_ET          = 23   # 11 PM ET — switch to overnight cadence
 COMMIT_INTERVAL_SEC         = 300  # 5 minutes
+RECONSTRUCT_INTERVAL_SEC    = 900  # 15 minutes — dispatch Reconstruct Flights workflow
 FALLBACK_DURATION_SEC       = 300  # stay on fallback before retrying primary
 FAILURES_BEFORE_FALLBACK    = 3
 REQUEST_TIMEOUT_SEC         = 8
@@ -192,6 +194,38 @@ INSERT INTO rejected_observations (raw_json, rejection_reason, observed_at, sour
 VALUES (?, ?, ?, ?)
 """
 
+# ── Reconstruct trigger ───────────────────────────────────────────────────────
+
+def _trigger_reconstruct(session: requests.Session) -> None:
+    """Fire a workflow_dispatch on Reconstruct Flights via the GitHub API.
+
+    GITHUB_TOKEN (actions: write) must be available in the environment.
+    No-ops silently when running outside GitHub Actions.
+    """
+    token = os.getenv("GITHUB_TOKEN")
+    if not token:
+        log.debug("GITHUB_TOKEN not set — skipping reconstruct dispatch")
+        return
+    repo = os.getenv("GITHUB_REPOSITORY", "chmavo/hudson-helo-tracker")
+    try:
+        r = session.post(
+            f"https://api.github.com/repos/{repo}/actions/workflows/reconstruct.yml/dispatches",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+            json={"ref": "main"},
+            timeout=10,
+        )
+        if r.status_code == 204:
+            log.info("dispatched Reconstruct Flights workflow")
+        else:
+            log.warning("reconstruct dispatch %d: %s", r.status_code, r.text[:200])
+    except Exception as exc:
+        log.warning("reconstruct dispatch failed: %s", exc)
+
+
 # ── Main loop ─────────────────────────────────────────────────────────────────
 
 def run(duration_sec: int, db_path: Path, data_dir: Path) -> None:
@@ -202,9 +236,10 @@ def run(duration_sec: int, db_path: Path, data_dir: Path) -> None:
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
 
-    loop_start   = time.monotonic()
-    next_commit  = time.monotonic() + COMMIT_INTERVAL_SEC
-    obs_window   = 0
+    loop_start        = time.monotonic()
+    next_commit       = time.monotonic() + COMMIT_INTERVAL_SEC
+    next_reconstruct  = time.monotonic() + RECONSTRUCT_INTERVAL_SEC
+    obs_window        = 0
 
     consecutive_failures = 0
     using_fallback       = False
@@ -304,6 +339,10 @@ def run(duration_sec: int, db_path: Path, data_dir: Path) -> None:
             commit_push(data_dir, f"harvest: {iso(utcnow())} ({obs_window} new obs)", db_path)
             obs_window  = 0
             next_commit = time.monotonic() + COMMIT_INTERVAL_SEC
+
+            if time.monotonic() >= next_reconstruct:
+                _trigger_reconstruct(session)
+                next_reconstruct = time.monotonic() + RECONSTRUCT_INTERVAL_SEC
 
         # ── Sleep to maintain cadence ─────────────────────────────────────────
         time.sleep(max(0.0, poll_interval - (time.monotonic() - poll_start)))
