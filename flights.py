@@ -66,6 +66,7 @@ MIN_OBS_FOR_HIGH_CONF   = 2     # fewer obs → confidence=low
 MAX_GAP_FOR_HIGH_CONF   = 180   # consecutive gap > 3 min → confidence=low
 MAX_SPEED_FOR_HIGH_CONF = 250   # implied kt > 250 → confidence=low (spoofing)
 HELIPORT_PROX_NM        = 0.3   # within 0.3nm → "at this heliport"
+HOB_ALTITUDE_GATE_FT    = 3000  # min_alt above this → not a Hoboken overflight
 
 # ── HHI permitted hours (PLACEHOLDER) ────────────────────────────────────────
 #
@@ -297,6 +298,15 @@ def compute_flight(obs: list, now_utc: datetime) -> dict | None:
                                        obs[i]["lat"],     obs[i]["lon"]):
                 crossed = True
                 break
+
+    # Altitude gate: commercial jets crossing at cruise/approach altitude are
+    # not Hoboken overflights. If every recorded altitude is above the gate,
+    # clear the flag. Missing altitude data is treated as below the gate
+    # (conservative — don't exclude aircraft that don't broadcast altitude).
+    if crossed and min_alt is not None and min_alt > HOB_ALTITUDE_GATE_FT:
+        crossed = False
+        log.debug("%s: min_alt=%.0fft > gate → not a Hoboken overflight",
+                  icao_hex, min_alt)
 
     # Min altitude uses only observations actually inside the polygon
     hob_alts         = [o["alt_baro_ft"] for o in hob_obs if o["alt_baro_ft"] is not None]
