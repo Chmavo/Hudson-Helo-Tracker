@@ -61,7 +61,7 @@ HOBOKEN_POLYGON = [
 
 SEGMENT_GAP_SEC         = 300   # gap > 5 min → new flight segment
 LOOKBACK_HOURS          = 6     # how far back to fetch observations
-COMPLETE_AGE_SEC        = 300   # flight is done if last obs > 5 min ago
+COMPLETE_AGE_SEC        = 0     # process all segments immediately; INSERT OR REPLACE keeps records idempotent
 MIN_OBS_FOR_HIGH_CONF   = 2     # fewer obs → confidence=low
 MAX_GAP_FOR_HIGH_CONF   = 180   # consecutive gap > 3 min → confidence=low
 MAX_SPEED_FOR_HIGH_CONF = 250   # implied kt > 250 → confidence=low (spoofing)

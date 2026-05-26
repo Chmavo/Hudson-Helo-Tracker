@@ -13,6 +13,7 @@ Usage:
 import argparse
 import json
 import logging
+import os
 import re
 import signal
 import sqlite3
@@ -44,6 +45,7 @@ POLL_INTERVAL_OVERNIGHT_SEC = 20   # 11 PM – 6 AM ET
 ACTIVE_HOUR_START_ET        = 6    # 6 AM ET — switch to active cadence
 ACTIVE_HOUR_END_ET          = 23   # 11 PM ET — switch to overnight cadence
 COMMIT_INTERVAL_SEC         = 300  # 5 minutes
+RECONSTRUCT_INTERVAL_SEC    = 900  # 15 minutes
 FALLBACK_DURATION_SEC       = 300  # stay on fallback before retrying primary
 FAILURES_BEFORE_FALLBACK    = 3
 REQUEST_TIMEOUT_SEC         = 8
@@ -60,6 +62,32 @@ SPD_MIN_KT, SPD_MAX_KT  =    0,    300
 API_SKEW_TOLERANCE_SEC  =  300   # reject batch if API clock drifts >5 min
 
 ICAO_RE = re.compile(r'^[0-9A-F]{6}$')
+
+# ── GitHub Actions helpers ────────────────────────────────────────────────────
+
+_GITHUB_API = "https://api.github.com"
+
+def _trigger_reconstruct(session: requests.Session,
+                          token: str, repo: str) -> None:
+    """Dispatch the reconstruct workflow via GitHub Actions API."""
+    url = f"{_GITHUB_API}/repos/{repo}/actions/workflows/reconstruct.yml/dispatches"
+    try:
+        r = session.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+            json={"ref": "main"},
+            timeout=10,
+        )
+        if r.status_code == 204:
+            log.info("Triggered reconstruct workflow")
+        else:
+            log.warning("Reconstruct dispatch HTTP %d: %s", r.status_code, r.text[:200])
+    except Exception as exc:
+        log.warning("Reconstruct dispatch failed: %s", exc)
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -202,9 +230,13 @@ def run(duration_sec: int, db_path: Path, data_dir: Path) -> None:
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
 
-    loop_start   = time.monotonic()
-    next_commit  = time.monotonic() + COMMIT_INTERVAL_SEC
-    obs_window   = 0
+    github_token = os.environ.get("GITHUB_TOKEN", "")
+    github_repo  = os.environ.get("GITHUB_REPOSITORY", "")
+
+    loop_start        = time.monotonic()
+    next_commit       = time.monotonic() + COMMIT_INTERVAL_SEC
+    next_reconstruct  = time.monotonic() + RECONSTRUCT_INTERVAL_SEC
+    obs_window        = 0
 
     consecutive_failures = 0
     using_fallback       = False
@@ -304,6 +336,11 @@ def run(duration_sec: int, db_path: Path, data_dir: Path) -> None:
             commit_push(data_dir, f"harvest: {iso(utcnow())} ({obs_window} new obs)", db_path)
             obs_window  = 0
             next_commit = time.monotonic() + COMMIT_INTERVAL_SEC
+
+        # ── Trigger reconstruct if due ────────────────────────────────────────
+        if github_token and github_repo and time.monotonic() >= next_reconstruct:
+            _trigger_reconstruct(session, github_token, github_repo)
+            next_reconstruct = time.monotonic() + RECONSTRUCT_INTERVAL_SEC
 
         # ── Sleep to maintain cadence ─────────────────────────────────────────
         time.sleep(max(0.0, poll_interval - (time.monotonic() - poll_start)))

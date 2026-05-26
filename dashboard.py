@@ -269,6 +269,13 @@ function toggleTheme(){
   localStorage.setItem('theme',dark?'dark':'light');
   document.getElementById('theme-btn').textContent=dark?'Light':'Dark';
 }
+matchMedia('(prefers-color-scheme:dark)').addEventListener('change',function(e){
+  if(localStorage.getItem('theme')===null){
+    var dark=e.matches;
+    document.body.classList.toggle('dark',dark);
+    document.getElementById('theme-btn').textContent=dark?'Light':'Dark';
+  }
+});
 
 function etTime(iso){
   if(!iso)return'';
@@ -288,7 +295,7 @@ function srt(col){
 }
 
 function render(d){
-  document.getElementById('ts').textContent=d.generated_at;
+  document.getElementById('ts').textContent=new Date(d.generated_at).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',timeZoneName:'short'});
   document.getElementById('mlbl').textContent=d.stats_days;
   document.getElementById('clbl').textContent=d.chart_days;
   document.getElementById('tlbl').textContent=d.table_days;
