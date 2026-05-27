@@ -1,8 +1,9 @@
 name: Enrich Aircraft Data (FAA Registry)
 
 on:
-  schedule:
-    - cron: '0 4 * * *'   # daily at 04:00 UTC
+  # schedule disabled — re-enable by uncommenting the block below
+  # schedule:
+  #   - cron: '0 4 * * *'
   workflow_dispatch:
 
 permissions:

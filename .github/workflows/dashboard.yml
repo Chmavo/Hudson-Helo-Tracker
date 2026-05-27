@@ -1,11 +1,9 @@
 name: Build Dashboard
 
 on:
-  schedule:
-    # Every 15 minutes — independent of the Reconstruct Flights workflow so
-    # the dashboard always gets a fresh build even when harvest is running and
-    # orphaning standalone reconstruct commits.
-    - cron: '*/15 * * * *'
+  # schedule disabled — re-enable by uncommenting the block below
+  # schedule:
+  #   - cron: '*/15 * * * *'
   workflow_dispatch:
 
 permissions:
